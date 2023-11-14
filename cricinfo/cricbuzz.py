@@ -7,25 +7,6 @@ class Cricbuzz():
 	def __init__(self):
 		pass
 
-	def crawl_url(self,url):
-		try:
-			r = requests.get(url).json()
-			return r
-		except Exception:
-			raise
-
-	def players_mapping(self,mid):
-		url = "https://www.cricbuzz.com/live-cricket-scores/75549/sl-vs-afg-30th-match-icc-cricket-world-cup-2023" + mid
-		match = self.crawl_url(url)
-		players = match.get('players')
-		d = {}
-		for p in players:
-			d[int(p['id'])] = p['name']
-		t = {}
-		t[int(match.get('team1').get('id'))] = match.get('team1').get('name')
-		t[int(match.get('team2').get('id'))] = match.get('team2').get('name')
-		return d,t
-
 	def matchinfo(self,mid):
 
 		url = f'https://m.cricbuzz.com/cricket-scorecard/{mid}'
@@ -133,17 +114,6 @@ class Cricbuzz():
 		else:
 			# print(url)
 			print("Request failed with status code :", response.status_code)
-
-
-	def find_match(self,id):
-		url = "http://mapps.cricbuzz.com/cbzios/match/livematches"
-		crawled_content = self.crawl_url(url)
-		matches = crawled_content['matches']
-
-		for match in matches:
-			if match['match_id'] == id:
-				return match
-		return None
 
 	def livescore(self,mid):
 		# URL of the cricket commentary page
@@ -301,29 +271,3 @@ class Cricbuzz():
 		else:
 			print("Failed to retrieve the web page. Status code:", response.status_code)
 
-	def fullcommentary(self,mid):
-		data = {}
-		try:
-			url =  "https://www.cricbuzz.com/match-api/"+mid+"/commentary-full.json"
-			comm = self.crawl_url(url).get('comm_lines')
-			d = []
-			for c in comm:
-				if "comm" in c:
-					d.append({"comm":c.get("comm"),"over":c.get("o_no")})
-			data['fullcommentary'] = d
-			return data
-		except Exception:
-			raise
-	def players(self,mid):
-		data = {}
-		try:
-			url =  "https://www.cricbuzz.com/match-api/"+mid+"/commentary.json"
-			players = self.crawl_url(url).get('players')
-			d = []
-			for c in players:
-				if "player" in c:
-					d.append({"id":c.get("id"),"f_name":c.get("f_name"),"name":c.get("name"),"bat_style":c.get("bat_style"),"bowl_style":c.get("bowl_style")})
-			data['players'] = d
-			return data
-		except Exception:
-			raise

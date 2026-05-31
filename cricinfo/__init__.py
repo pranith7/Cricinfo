@@ -5,6 +5,6 @@ __version__ = "1.3.0"
 __author__ = "Pranith Pashikanti"
 __license__ = "GPLv2"
 
-from .cricbuzz import Cricbuzz, CricbuzzError
+from cricinfo.cricbuzz import Cricbuzz, CricbuzzError
 
-__all__ = ["Cricbuzz", "CricbuzzError"]
+__all__ = ["Cricbuzz", "CricbuzzError", "__version__"]

@@ -35,7 +35,7 @@ class Cricbuzz:
     def matchinfo(self, mid: Any, print_output: bool = False) -> Dict[str, str]:
         """Return match metadata from a scorecard page."""
 
-        soup = self._soup(f"/cricket-scorecard/{mid}")
+        soup = self._soup(f"/live-cricket-scorecard/{mid}")
         data: Dict[str, str] = {}
 
         for item in soup.find_all("div", class_="cb-list-item"):
@@ -55,7 +55,7 @@ class Cricbuzz:
         """Return live, recent, and upcoming matches visible on Cricbuzz."""
 
         soup = self._soup("/")
-        pattern = re.compile(r"/cricket-commentary/(\d+)/([^/#?]+)")
+        pattern = re.compile(r"/(?:live-cricket-scores|cricket-commentary)/(\d+)/([^/#?]+)")
         seen = set()
         matches: List[Dict[str, str]] = []
 
@@ -91,7 +91,7 @@ class Cricbuzz:
     def summary(self, mid: Any, print_output: bool = False) -> List[str]:
         """Return Cricbuzz's mini-score summary for a match."""
 
-        soup = self._soup(f"/cricket-match-summary/{mid}")
+        soup = self._soup(f"/live-cricket-scores/{mid}")
         summaries = [
             self._clean(element.get_text())
             for element in soup.find_all(class_="miniscore-data")
@@ -105,13 +105,18 @@ class Cricbuzz:
     def result(self, mid: Any, print_output: bool = False) -> Dict[str, str]:
         """Return the visible match result/status and score text."""
 
-        soup = self._soup(f"/cricket-commentary/{mid}")
+        html = self._html(f"/live-cricket-scores/{mid}")
+        soup = BeautifulSoup(html, "html.parser")
         result = soup.find("h3", class_="ui-li-heading")
         score = soup.find("div", class_="col-xs-9 col-lg-9 dis-inline")
 
         data = {
-            "result": self._clean(result.get_text()) if result else "",
-            "score": self._clean(score.get_text()) if score else "",
+            "result": self._clean(result.get_text())
+            if result
+            else self._embedded_field(html, "status", mid),
+            "score": self._clean(score.get_text())
+            if score
+            else self._embedded_score(html, mid),
         }
 
         if not any(data.values()):
@@ -125,7 +130,7 @@ class Cricbuzz:
     def livescore(self, mid: Any, print_output: bool = False) -> Dict[str, Any]:
         """Return the current mini-score, batting, and bowling data."""
 
-        soup = self._soup(f"/cricket-commentary/{mid}")
+        soup = self._soup(f"/live-cricket-scores/{mid}")
         data: Dict[str, Any] = {
             "header": self._first_text(
                 soup, "h4.cb-list-item.ui-header.ui-branding-header"
@@ -148,7 +153,7 @@ class Cricbuzz:
     def commentary(self, mid: Any, print_output: bool = False) -> List[str]:
         """Return recent ball-by-ball commentary."""
 
-        soup = self._soup(f"/cricket-commentary/{mid}")
+        soup = self._soup(f"/live-cricket-full-commentary/{mid}")
         items = [
             self._clean(item.get_text())
             for item in soup.select(".cb-list-item:not(.cbz_ads) .list-content .commtext")
@@ -162,7 +167,7 @@ class Cricbuzz:
     def scorecard(self, mid: Any, print_output: bool = False) -> Dict[str, Any]:
         """Return batting and bowling rows grouped by innings."""
 
-        soup = self._soup(f"/cricket-scorecard/{mid}")
+        soup = self._soup(f"/live-cricket-scorecard/{mid}")
         innings = []
 
         for innings_id in ("inn_1", "inn_2"):
@@ -199,6 +204,9 @@ class Cricbuzz:
         return data
 
     def _soup(self, path: str) -> BeautifulSoup:
+        return BeautifulSoup(self._html(path), "html.parser")
+
+    def _html(self, path: str) -> str:
         url = f"{self.base_url}{path}"
         try:
             response = self.session.get(url, timeout=self.timeout)
@@ -206,7 +214,7 @@ class Cricbuzz:
         except requests.RequestException as exc:
             raise CricbuzzError(f"Failed to fetch {url}: {exc}") from exc
 
-        return BeautifulSoup(response.text, "html.parser")
+        return response.text
 
     @staticmethod
     def _clean(value: str) -> str:
@@ -231,6 +239,56 @@ class Cricbuzz:
     def _first_text(self, soup: BeautifulSoup, selector: str) -> str:
         element = soup.select_one(selector)
         return self._clean(element.get_text()) if element else ""
+
+    def _embedded_field(self, html: str, field: str, mid: Optional[Any] = None) -> str:
+        if mid is not None:
+            for search_area in self._embedded_match_segments(html, mid):
+                match = re.search(rf'\\"{field}\\":\\"([^"\\]*)\\"', search_area)
+                if match:
+                    return self._clean(match.group(1))
+
+        match = re.search(rf'\\"{field}\\":\\"([^"\\]*)\\"', html)
+        return self._clean(match.group(1)) if match else ""
+
+    def _embedded_score(self, html: str, mid: Optional[Any] = None) -> str:
+        search_areas = [html]
+        if mid is not None:
+            search_areas = self._embedded_match_segments(html, mid)
+
+        for search_area in search_areas:
+            team_scores = []
+            for team_number in (1, 2):
+                score_match = re.search(
+                    rf'\\"team{team_number}Score\\":\{{\\"inngs1\\":\{{'
+                    r'\\"inningsId\\":\d+,\\"runs\\":(\d+),\\"wickets\\":(\d+),'
+                    r'\\"overs\\":([\d.]+)',
+                    search_area,
+                )
+                if score_match:
+                    runs, wickets, overs = score_match.groups()
+                    team_scores.append(f"{runs}/{wickets} ({overs})")
+            if team_scores:
+                return " | ".join(team_scores)
+
+        return ""
+
+    @staticmethod
+    def _embedded_match_segments(html: str, mid: Any) -> List[str]:
+        marker = rf'\\"matchId\\":{re.escape(str(mid))}'
+        marker_matches = list(re.finditer(marker, html))
+        segments = []
+
+        for marker_match in marker_matches:
+            start = marker_match.start()
+            next_match = re.search(r'\\"matchId\\":\d+', html[marker_match.end() :])
+            next_start = (
+                marker_match.end() + next_match.start()
+                if next_match
+                else min(len(html), start + 16000)
+            )
+            segments.append(html[start:next_start])
+
+        return list(reversed(segments))
 
     def _table_rows(self, soup: BeautifulSoup, table_index: int) -> List[Dict[str, str]]:
         tables = soup.select(".table-condensed")

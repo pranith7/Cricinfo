@@ -83,7 +83,7 @@ class CricbuzzTest(unittest.TestCase):
         """
         session = FakeSession(
             {
-                "https://example.test/cricket-commentary/123": FakeResponse(html),
+                "https://example.test/live-cricket-scores/123": FakeResponse(html),
             }
         )
         client = Cricbuzz(session=session, base_url="https://example.test")
@@ -97,6 +97,24 @@ class CricbuzzTest(unittest.TestCase):
         self.assertEqual(live["batting"][0]["player"], "R Sharma")
         self.assertEqual(live["bowling"][0]["bowler"], "M Starc")
         self.assertEqual(live["partnership"], "Partnership 30")
+
+    def test_result_falls_back_to_embedded_page_data(self):
+        html = r'''
+        <script>
+        self.__next_f.push(["matchHeader\":{\"matchId\":123,\"status\":\"Match starts at 7:30 PM\"},\"matchScore\":{\"team1Score\":{\"inngs1\":{\"inningsId\":1,\"runs\":200,\"wickets\":4,\"overs\":20}},\"team2Score\":{\"inngs1\":{\"inningsId\":2,\"runs\":190,\"wickets\":8,\"overs\":20}}}"])
+        </script>
+        '''
+        session = FakeSession(
+            {
+                "https://example.test/live-cricket-scores/123": FakeResponse(html),
+            }
+        )
+        client = Cricbuzz(session=session, base_url="https://example.test")
+
+        self.assertEqual(
+            client.result("123"),
+            {"result": "Match starts at 7:30 PM", "score": "200/4 (20) | 190/8 (20)"},
+        )
 
     def test_http_errors_raise_package_error(self):
         session = FakeSession(

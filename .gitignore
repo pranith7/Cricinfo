@@ -13,4 +13,8 @@ doc/cdoc/build
 MANIFEST
 .cache
 *.pyc
-
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/

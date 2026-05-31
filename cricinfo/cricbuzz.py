@@ -60,7 +60,9 @@ class Cricbuzz:
         matches: List[Dict[str, str]] = []
 
         for link in soup.find_all("a", href=pattern):
-            href = link.get("href", "")
+            href = link.get("href")
+            if not isinstance(href, str):
+                continue
             match = pattern.search(href)
             if not match:
                 continue

@@ -148,11 +148,13 @@ def test_result_uses_legacy_markup_when_available(base_url: str) -> None:
 
 
 def test_result_falls_back_to_embedded_page_data(base_url: str) -> None:
-    html = r'''
-    <script>
-    self.__next_f.push(["matchHeader\":{\"matchId\":123,\"status\":\"Match starts at 7:30 PM\"},\"matchScore\":{\"team1Score\":{\"inngs1\":{\"inningsId\":1,\"runs\":200,\"wickets\":4,\"overs\":20}},\"team2Score\":{\"inngs1\":{\"inningsId\":2,\"runs\":190,\"wickets\":8,\"overs\":20}}}"])
-    </script>
-    '''
+    html = (
+        r'<script>self.__next_f.push(["matchHeader\":{\"matchId\":123,'
+        r'\"status\":\"Match starts at 7:30 PM\"},\"matchScore\":{\"team1Score\":'
+        r'{\"inngs1\":{\"inningsId\":1,\"runs\":200,\"wickets\":4,\"overs\":20}},'
+        r'\"team2Score\":{\"inngs1\":{\"inningsId\":2,\"runs\":190,\"wickets\":8,'
+        r'\"overs\":20}}}"])</script>'
+    )
     session = FakeSession({f"{base_url}/live-cricket-scores/123": FakeResponse(html)})
 
     assert Cricbuzz(session=session, base_url=base_url).result("123") == {
@@ -263,7 +265,9 @@ def test_commentary_returns_clean_items(base_url: str) -> None:
             f"{base_url}/live-cricket-full-commentary/123": FakeResponse(
                 """
                 <div class="cb-list-item">
-                    <div class="list-content"><span class="commtext">Four! through cover</span></div>
+                    <div class="list-content">
+                        <span class="commtext">Four! through cover</span>
+                    </div>
                 </div>
                 <div class="cb-list-item cbz_ads">
                     <div class="list-content"><span class="commtext">Ad</span></div>
@@ -360,7 +364,9 @@ def test_scorecard_can_print_tables(
     assert "India Innings" in capsys.readouterr().out
 
 
-def test_print_output_preserves_console_mode(base_url: str, capsys: pytest.CaptureFixture[str]) -> None:
+def test_print_output_preserves_console_mode(
+    base_url: str, capsys: pytest.CaptureFixture[str]
+) -> None:
     session = FakeSession(
         {
             f"{base_url}/": FakeResponse(

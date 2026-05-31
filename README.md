@@ -138,6 +138,8 @@ python -m pytest
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor workflow and [docs/api.md](docs/api.md) for API details.
 
+Release history is tracked in [CHANGELOG.md](CHANGELOG.md), and upcoming work is tracked in [ROADMAP.md](ROADMAP.md).
+
 ## Notes
 
 This package scrapes Cricbuzz's public mobile pages. Page structure changes on Cricbuzz can require selector updates.

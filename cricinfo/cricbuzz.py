@@ -1,273 +1,312 @@
-import requests
-import time
+"""Small Cricbuzz mobile-site client used by the public Cricinfo package."""
+
 import re
+from typing import Any, Dict, Iterable, List, Optional
+
+import requests
 from bs4 import BeautifulSoup
 
-class Cricbuzz():
-	def __init__(self):
-		pass
 
-	def matchinfo(self,mid):
-
-		url = f'https://m.cricbuzz.com/cricket-scorecard/{mid}'
-
-		response = requests.get(url)
-		html = response.text
-
-		soup = BeautifulSoup(html, 'html.parser')
-
-		data = {}  # Create a dictionary to store the extracted data
-
-		# Find all div elements with class 'cb-list-item'
-		items = soup.find_all("div", class_="cb-list-item")
-
-		for item in items:
-			title_element = item.find("h3", class_="ui-li-heading")
-			content_element = item.find("div", class_="list-content")
-
-			if title_element and content_element:
-				title = title_element.get_text(strip=True)
-				content = content_element.get_text(strip=True)
-
-				# Add the data to the dictionary
-				data[title] = content
-
-		# Print the extracted data
-		for key, value in data.items():
-			print(f"{key}: {value}")
+class CricbuzzError(RuntimeError):
+    """Raised when Cricbuzz cannot be reached or a response cannot be parsed."""
 
 
-	def matches(self):
+class Cricbuzz:
+    """Fetch live cricket data from Cricbuzz's mobile pages.
 
-		url = "https://m.cricbuzz.com"
+    Methods return structured Python data and can also print a compact human
+    readable view by passing ``print_output=True``.
+    """
 
-		# Send an HTTP request to the URL and get the content
-		response = requests.get(url)
+    BASE_URL = "https://m.cricbuzz.com"
+    USER_AGENT = "cricinfo-python/1.3 (+https://github.com/pranith7/cricinfo)"
 
-		if response.status_code == 200:
-			# Parse the HTML content using BeautifulSoup
-			soup = BeautifulSoup(response.text, 'html.parser')
+    def __init__(
+        self,
+        timeout: int = 10,
+        session: Optional[requests.Session] = None,
+        base_url: str = BASE_URL,
+    ) -> None:
+        self.timeout = timeout
+        self.base_url = base_url.rstrip("/")
+        self.session = session or requests.Session()
+        self.session.headers.setdefault("User-Agent", self.USER_AGENT)
 
-			# Find all anchor elements with a "href" attribute containing match IDs and names
-			match_links = soup.find_all("a", href=re.compile(r"/cricket-commentary/(\d+)/([^/]+)-[^/]+-[^/]+-\d+"))
+    def matchinfo(self, mid: Any, print_output: bool = False) -> Dict[str, str]:
+        """Return match metadata from a scorecard page."""
 
-			# Extract and print the match names and match IDs
-			for link in match_links:
-				match_url = link["href"]
-				match_name = re.search(r"/cricket-commentary/(\d+)/([^/]+)-[^/]+-[^/]+-\d+", match_url).group(2)
-				match_id = re.search(r"/cricket-commentary/(\d+)/([^/]+)-[^/]+-[^/]+-\d+", match_url).group(1)
-				print(f"Match Name: {match_name}, Match ID: {match_id}")
+        soup = self._soup(f"/cricket-scorecard/{mid}")
+        data: Dict[str, str] = {}
 
-		else:
-			print("Request failed with status code:", response.status_code)
-	
-	def summary(self,mid):
+        for item in soup.find_all("div", class_="cb-list-item"):
+            title_element = item.find("h3", class_="ui-li-heading")
+            content_element = item.find("div", class_="list-content")
+            if title_element and content_element:
+                data[self._clean(title_element.get_text())] = self._clean(
+                    content_element.get_text()
+                )
 
-		# URL of the page you want to scrape
-		url = f"https://m.cricbuzz.com/cricket-match-summary/{mid}"
+        if print_output:
+            self._print_lines(f"{key}: {value}" for key, value in data.items())
 
-		# Send an HTTP GET request to the URL
-		response = requests.get(url)
+        return data
 
-		if response.status_code == 200:
-			# Parse the HTML content using BeautifulSoup
-			soup = BeautifulSoup(response.content, 'html.parser')
+    def matches(self, print_output: bool = False) -> List[Dict[str, str]]:
+        """Return live, recent, and upcoming matches visible on Cricbuzz."""
 
-			# Find all the elements with class "miniscore-data"
-			miniscore_data = soup.find_all(class_="miniscore-data")
+        soup = self._soup("/")
+        pattern = re.compile(r"/cricket-commentary/(\d+)/([^/#?]+)")
+        seen = set()
+        matches: List[Dict[str, str]] = []
 
-			# Loop through the miniscore data elements and format the summary info
-			for element in miniscore_data:
-				summary_info = element.get_text()
-				# Replace consecutive spaces with a single space and format the output
-				summary_info = ' '.join(summary_info.split())
-				summary_info = summary_info.replace('Batting', '\nBatting\n').replace('Bowling', '\nBowling\n').replace(' ', ' ')
-				print(summary_info)
-		else:
-			print("Failed to retrieve the page. Status code:", response.status_code)
+        for link in soup.find_all("a", href=pattern):
+            href = link.get("href", "")
+            match = pattern.search(href)
+            if not match:
+                continue
 
-	def result(self,mid):
-		# Define the URL
-		url = f"https://m.cricbuzz.com/cricket-commentary/{mid}"
-		# print("url for the match is \n",url)
+            match_id = match.group(1)
+            if match_id in seen:
+                continue
 
-		# Send an HTTP request to the URL and get the content
-		response = requests.get(url)
+            seen.add(match_id)
+            slug = match.group(2).strip("/")
+            name = self._title_from_slug(slug)
+            matches.append(
+                {
+                    "id": match_id,
+                    "name": name,
+                    "url": f"{self.base_url}{href}",
+                }
+            )
 
-		if response.status_code == 200:
-			# Parse the HTML content using BeautifulSoup
-			soup = BeautifulSoup(response.text, 'html.parser')
+        if print_output:
+            self._print_lines(
+                f"Match Name: {match['name']}, Match ID: {match['id']}"
+                for match in matches
+            )
 
-			# Find the specific h3 element that contains the desired header value
-			result = soup.find("h3", class_="ui-li-heading")
-			score = soup.find("div", class_="col-xs-9 col-lg-9 dis-inline")
+        return matches
 
-			if result or score:
-				# Extract and print the desired header value
-				result_text = result.get_text(strip=True)
-				score_text = score.get_text(strip=True)
-				print("Result of the Match:")
-				print(result_text)
-				print(score_text)
-			else:
-				print("Header not found on the page.")
-		else:
-			# print(url)
-			print("Request failed with status code :", response.status_code)
+    def summary(self, mid: Any, print_output: bool = False) -> List[str]:
+        """Return Cricbuzz's mini-score summary for a match."""
 
-	def livescore(self,mid):
-		# URL of the cricket commentary page
-		url = f"https://m.cricbuzz.com/cricket-commentary/{mid}"
+        soup = self._soup(f"/cricket-match-summary/{mid}")
+        summaries = [
+            self._clean(element.get_text())
+            for element in soup.find_all(class_="miniscore-data")
+        ]
 
-		# Send a GET request to the URL
-		response = requests.get(url)
+        if print_output:
+            self._print_lines(summaries)
 
-		# Check if the request was successful (status code 200)
-		if response.status_code == 200:
-			# Parse the HTML content using BeautifulSoup
-			soup = BeautifulSoup(response.text, 'html.parser')
+        return summaries
 
-			# Find divs with class "list-group"
-			list_group_divs = soup.find_all('div', class_='list-group')
+    def result(self, mid: Any, print_output: bool = False) -> Dict[str, str]:
+        """Return the visible match result/status and score text."""
 
-			# Extract and print data from divs 1, 2, and 3
-			for i, div in enumerate(list_group_divs[:3], 1):
+        soup = self._soup(f"/cricket-commentary/{mid}")
+        result = soup.find("h3", class_="ui-li-heading")
+        score = soup.find("div", class_="col-xs-9 col-lg-9 dis-inline")
 
-				# Extract relevant information based on the structure of the HTML
-				if i == 1:
-					header = div.find('h4', class_='cb-list-item ui-header ui-branding-header')
-					print("Match Header: ", header.text.strip())
+        data = {
+            "result": self._clean(result.get_text()) if result else "",
+            "score": self._clean(score.get_text()) if score else "",
+        }
 
-				elif i == 2:
-					status_div = div.find('div', class_='col-xs-12 col-lg-12 dis-inline')
-					status = status_div.find('div', class_='cbz-ui-status')
-					print("Match Status: ", status.text.strip())
+        if not any(data.values()):
+            raise CricbuzzError(f"Could not find result data for match id {mid}")
 
-				elif i == 3:
-					teams_score_div = div.find('div', class_='miniscore-data ui-match-scores-branding')
-					# soup = teams_score_div
-					team_scores = soup.select('.miniscore-teams')[0].get_text(strip=True)
-					print(f"Team Scores:  {team_scores}")
+        if print_output:
+            self._print_lines(["Result of the Match:", data["result"], data["score"]])
 
-					# Extracting and displaying current run rate
-					crr = soup.select('.crr')[0].get_text(strip=True)
-					print(f"Current Run Rate: {crr}")
+        return data
 
-					# Extracting and displaying batting details
-					batting_table = soup.select('.table-condensed')[0]
-					batting_rows = batting_table.select('tr')[1:]  # Skip the header row
+    def livescore(self, mid: Any, print_output: bool = False) -> Dict[str, Any]:
+        """Return the current mini-score, batting, and bowling data."""
 
-					print("\nBatting Details:")
-					for row in batting_rows:
-						columns = row.select('td')
-						player_name = columns[0].get_text(strip=True)
-						runs = columns[1].get_text(strip=True)
-						fours = columns[2].get_text(strip=True)
-						sixes = columns[3].get_text(strip=True)
-						strike_rate = columns[4].get_text(strip=True)
+        soup = self._soup(f"/cricket-commentary/{mid}")
+        data: Dict[str, Any] = {
+            "header": self._first_text(
+                soup, "h4.cb-list-item.ui-header.ui-branding-header"
+            ),
+            "status": self._first_text(soup, ".cbz-ui-status"),
+            "team_scores": self._first_text(soup, ".miniscore-teams"),
+            "current_run_rate": self._first_text(soup, ".crr"),
+            "batting": self._table_rows(soup, 0),
+            "bowling": self._table_rows(soup, 1),
+            "partnership": self._first_text(
+                soup, ".ui-branding-style-partner .list-content"
+            ),
+        }
 
-						print(f"{player_name}: {runs} runs, {fours} fours, {sixes} sixes, Strike Rate: {strike_rate}")
+        if print_output:
+            self._print_live_score(data)
 
-					# Extracting and displaying bowling details
-					bowling_table = soup.select('.table-condensed')[1]
-					bowling_rows = bowling_table.select('tr')[1:]  # Skip the header row
+        return data
 
-					print("\nBowling Details:")
-					for row in bowling_rows:
-						columns = row.select('td')
-						bowler_name = columns[0].get_text(strip=True)
-						overs = columns[1].get_text(strip=True)
-						maidens = columns[2].get_text(strip=True)
-						runs_given = columns[3].get_text(strip=True)
-						wickets = columns[4].get_text(strip=True)
+    def commentary(self, mid: Any, print_output: bool = False) -> List[str]:
+        """Return recent ball-by-ball commentary."""
 
-						print(f"{bowler_name}: {overs} overs, {maidens} maidens, {runs_given} runs, {wickets} wickets")
+        soup = self._soup(f"/cricket-commentary/{mid}")
+        items = [
+            self._clean(item.get_text())
+            for item in soup.select(".cb-list-item:not(.cbz_ads) .list-content .commtext")
+        ]
 
-					# Extracting and displaying partnership, last wicket, and recent balls
-					partner_info = soup.select('.ui-branding-style-partner .list-content')[0].get_text(strip=True)
-					print(f"\nPartner Information:\n{partner_info}")
+        if print_output:
+            self._print_lines(["Commentary:", *items])
 
-				# print("\n" + "=" * 50 + "\n")  # Separation line
-				print("\n")
+        return items
 
-		else:
-			print(f"Failed to retrieve the content. Status code: {response.status_code}")
+    def scorecard(self, mid: Any, print_output: bool = False) -> Dict[str, Any]:
+        """Return batting and bowling rows grouped by innings."""
 
-	def commentary(self,mid):
-		# data = {}
-		# URL of the cricket commentary page
-		url = f"https://m.cricbuzz.com/cricket-commentary/{mid}"
+        soup = self._soup(f"/cricket-scorecard/{mid}")
+        innings = []
 
-		# Send a GET request to the URL
-		response = requests.get(url)
+        for innings_id in ("inn_1", "inn_2"):
+            innings_soup = soup.find("div", id=innings_id)
+            if not innings_soup:
+                continue
 
-		# Check if the request was successful (status code 200)
-		if response.status_code == 200:
-			# Parse the HTML content using BeautifulSoup
-			soup = BeautifulSoup(response.text, 'html.parser')
+            teams = [
+                self._clean(team.get_text())
+                for team in innings_soup.find_all(
+                    "div", class_="cb-list-item ui-header ui-header-small"
+                )
+            ]
+            tables = []
+            for table in innings_soup.find_all("table", class_="table table-condensed"):
+                rows = []
+                for row in table.find_all("tr"):
+                    columns = [
+                        self._clean(column.get_text())
+                        for column in row.find_all(["th", "td"])
+                    ]
+                    if any(columns):
+                        rows.append(columns)
+                if rows:
+                    tables.append(rows)
 
-			# Extracting and displaying commentary
-			commentary_items = soup.select('.cb-list-item:not(.cbz_ads) .list-content .commtext')
-			print("\nCommentary:")
-			for item in commentary_items:
-				commentary_text = item.get_text(strip=True)
-				print(commentary_text)
-		else:
-			print(f"Failed to retrieve the content. Status code: {response.status_code}")
+            innings.append({"id": innings_id, "teams": teams, "tables": tables})
 
-	def scorecard(self,mid):
+        data = {"match_id": str(mid), "innings": innings}
 
-		# URL to fetch
-		url = f"https://m.cricbuzz.com/cricket-scorecard/{mid}"
+        if print_output:
+            self._print_scorecard(data)
 
-		# Send an HTTP GET request to the URL
-		response = requests.get(url)
+        return data
 
-		# Check if the request was successful
-		if response.status_code == 200:
-			# Parse the HTML content
-			soup = BeautifulSoup(response.text, 'html.parser')
+    def _soup(self, path: str) -> BeautifulSoup:
+        url = f"{self.base_url}{path}"
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise CricbuzzError(f"Failed to fetch {url}: {exc}") from exc
 
-			# Find and extract the relevant section with the team details and batting/bowling statistics
-			inn_1 = soup.find('div', id='inn_1')
+        return BeautifulSoup(response.text, "html.parser")
 
-			# Extract the AFG and AUS team information
-			teams = inn_1.find_all('div', class_='cb-list-item ui-header ui-header-small')
-			for team in teams:
-				print(team.get_text())
+    @staticmethod
+    def _clean(value: str) -> str:
+        return " ".join(value.split())
 
-			print("\n")
-			# Extract batting and bowling statistics
-			tables = inn_1.find_all('table', class_='table table-condensed')
-			for table in tables:
-				rows = table.find_all('tr')
-				for row in rows:
-					columns = row.find_all('td')
-					row_text = " ".join(column.get_text() for column in columns)
-					print(row_text)
-				print("\n")
-			# print("\n")
+    @staticmethod
+    def _title_from_slug(slug: str) -> str:
+        parts = [part for part in slug.split("-") if not part.isdigit()]
+        words = []
+        for part in parts:
+            if re.fullmatch(r"\d+(st|nd|rd|th)", part):
+                words.append(part)
+            elif part == "vs":
+                words.append("vs")
+            elif len(part) <= 3:
+                words.append(part.upper())
+            else:
+                words.append(part.capitalize())
 
-			inn_2 = soup.find('div', id='inn_2')
+        return " ".join(words)
 
-			# Extract the AFG and AUS team information
-			teams = inn_2.find_all('div', class_='cb-list-item ui-header ui-header-small')
-			for team in teams:
-				print(team.get_text())
+    def _first_text(self, soup: BeautifulSoup, selector: str) -> str:
+        element = soup.select_one(selector)
+        return self._clean(element.get_text()) if element else ""
 
-			print("\n")
-			# Extract batting and bowling statistics
-			tables = inn_2.find_all('table', class_='table table-condensed')
-			for table in tables:
-				rows = table.find_all('tr')
-				for row in rows:
-					columns = row.find_all('td')
-					row_text = " ".join(column.get_text() for column in columns)
-					print(row_text)
-				print("\n")
-			# print("\n")
+    def _table_rows(self, soup: BeautifulSoup, table_index: int) -> List[Dict[str, str]]:
+        tables = soup.select(".table-condensed")
+        if len(tables) <= table_index:
+            return []
 
+        rows = []
+        for row in tables[table_index].select("tr")[1:]:
+            columns = [self._clean(column.get_text()) for column in row.select("td")]
+            if not columns:
+                continue
 
-		else:
-			print("Failed to retrieve the web page. Status code:", response.status_code)
+            if table_index == 0 and len(columns) >= 5:
+                rows.append(
+                    {
+                        "player": columns[0],
+                        "runs": columns[1],
+                        "fours": columns[2],
+                        "sixes": columns[3],
+                        "strike_rate": columns[4],
+                    }
+                )
+            elif table_index == 1 and len(columns) >= 5:
+                rows.append(
+                    {
+                        "bowler": columns[0],
+                        "overs": columns[1],
+                        "maidens": columns[2],
+                        "runs": columns[3],
+                        "wickets": columns[4],
+                    }
+                )
 
+        return rows
+
+    @staticmethod
+    def _print_lines(lines: Iterable[str]) -> None:
+        for line in lines:
+            print(line)
+
+    def _print_live_score(self, data: Dict[str, Any]) -> None:
+        if data["header"]:
+            print(f"Match Header: {data['header']}\n")
+        if data["status"]:
+            print(f"Match Status: {data['status']}\n")
+        if data["team_scores"]:
+            print(f"Team Scores: {data['team_scores']}")
+        if data["current_run_rate"]:
+            print(f"Current Run Rate: {data['current_run_rate']}")
+
+        if data["batting"]:
+            print("\nBatting Details:")
+            for batter in data["batting"]:
+                print(
+                    "{player}: {runs} runs, {fours} fours, {sixes} sixes, "
+                    "Strike Rate: {strike_rate}".format(**batter)
+                )
+
+        if data["bowling"]:
+            print("\nBowling Details:")
+            for bowler in data["bowling"]:
+                print(
+                    "{bowler}: {overs} overs, {maidens} maidens, {runs} runs, "
+                    "{wickets} wickets".format(**bowler)
+                )
+
+        if data["partnership"]:
+            print(f"\nPartner Information:\n{data['partnership']}")
+
+    @staticmethod
+    def _print_scorecard(data: Dict[str, Any]) -> None:
+        for innings in data["innings"]:
+            for team in innings["teams"]:
+                print(team)
+            print()
+            for table in innings["tables"]:
+                for row in table:
+                    print(" ".join(row))
+                print()

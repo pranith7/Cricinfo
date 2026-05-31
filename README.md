@@ -1,57 +1,136 @@
-# <b>Cricbuzz for Python</b>
-A Pythonic interface to cricbuzz, with options to get live scores, live commentary and scorecards.
+# Cricinfo
 
-<b>For detailed explaination with output, check this notebook..</b>
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1H_42SxnYojO_O7BULvMk4dgmA_Fen3fG?usp=sharing)
+A small Python interface for live cricket scores, commentary, match summaries, and scorecards from Cricbuzz.
 
-
-<b>Instalation</b>
-
-<code>
+```bash
 pip install cricinfo
-</code>
+```
 
-<b>Features</b>
-
-
-<b>Basic Usage</b>
-
-Import the pycricbuzz library.
+## Quick Start
 
 ```python
 from cricinfo import Cricbuzz
-c = Cricbuzz()
+
+cricket = Cricbuzz()
+
+matches = cricket.matches()
+first_match = matches[0]
+
+print(first_match["name"], first_match["id"])
+print(cricket.result(first_match["id"]))
 ```
 
-<b>Get all the matches(live,upcoming and recently finished matches)</b>
+Every method returns regular Python data, so it is easy to use in scripts, notebooks, APIs, and dashboards.
+
+## Examples
+
+### List Matches
 
 ```python
-print(c.matches())
+from cricinfo import Cricbuzz
+
+cricket = Cricbuzz()
+
+for match in cricket.matches():
+    print(match["id"], match["name"])
 ```
 
-Each match will have an attribute 'id'. Use this 'id' to get matchinfo, scorecard, brief score and commentary of matches.
-
-<b>Get information about a match</b>
-
-```
-print(c.matchinfo(match['id']))
-```
-
-<b>Get brief score of a match</b>
+Returned shape:
 
 ```python
-print(c.livescore(match['id']))
+[
+    {
+        "id": "12345",
+        "name": "India vs Australia 3rd ODI",
+        "url": "https://m.cricbuzz.com/cricket-commentary/12345/...",
+    }
+]
 ```
 
-<b>Get scorecard of a match</b>
+### Match Result
 
 ```python
-print(c.scorecard(match['id']))
+result = cricket.result("12345")
+
+print(result["result"])
+print(result["score"])
 ```
 
-<b>Get commentary of a match</b>
+### Live Score
 
 ```python
-print(c.commentary(match['id']))
+live = cricket.livescore("12345")
+
+print(live["status"])
+print(live["team_scores"])
+print(live["current_run_rate"])
+print(live["batting"])
+print(live["bowling"])
 ```
 
+### Commentary
+
+```python
+for item in cricket.commentary("12345"):
+    print(item)
+```
+
+### Scorecard
+
+```python
+scorecard = cricket.scorecard("12345")
+
+for innings in scorecard["innings"]:
+    print(innings["teams"])
+    print(innings["tables"])
+```
+
+### Human-Readable Printing
+
+If you want the older console-style output, pass `print_output=True`.
+
+```python
+cricket.matches(print_output=True)
+cricket.livescore("12345", print_output=True)
+cricket.scorecard("12345", print_output=True)
+```
+
+## API
+
+```python
+cricket = Cricbuzz(timeout=10)
+```
+
+Available methods:
+
+| Method | Returns |
+| --- | --- |
+| `matches()` | List of match dictionaries with `id`, `name`, and `url` |
+| `matchinfo(match_id)` | Match metadata dictionary |
+| `summary(match_id)` | List of summary strings |
+| `result(match_id)` | Dictionary with `result` and `score` |
+| `livescore(match_id)` | Dictionary with status, scores, batting, bowling, and partnership data |
+| `commentary(match_id)` | List of commentary strings |
+| `scorecard(match_id)` | Dictionary containing innings, teams, and scorecard table rows |
+
+Network and parsing errors raise `CricbuzzError`.
+
+```python
+from cricinfo import Cricbuzz, CricbuzzError
+
+try:
+    print(Cricbuzz().matches())
+except CricbuzzError as exc:
+    print(f"Could not fetch Cricbuzz data: {exc}")
+```
+
+## Development
+
+```bash
+python -m unittest discover -s tests
+python -m compileall cricinfo tests
+```
+
+## Notes
+
+This package scrapes Cricbuzz's public mobile pages. Page structure changes on Cricbuzz can require selector updates.

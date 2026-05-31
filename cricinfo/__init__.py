@@ -1,10 +1,10 @@
-"""
-cricbuzz
-"""
+"""Python interface for live Cricbuzz cricket data."""
 
-__title__ = 'cricbuzz'
-__version__ = '0.1'
-__author__ = 'Shivam Mitra'
-__license__ = 'GPLv2'
+__title__ = "cricinfo"
+__version__ = "1.3.0"
+__author__ = "Pranith Pashikanti"
+__license__ = "GPLv2"
 
-from .cricbuzz import Cricbuzz
+from .cricbuzz import Cricbuzz, CricbuzzError
+
+__all__ = ["Cricbuzz", "CricbuzzError"]

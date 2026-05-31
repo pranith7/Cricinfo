@@ -2,6 +2,9 @@
 
 A small Python interface for live cricket scores, commentary, match summaries, and scorecards from Cricbuzz.
 
+[![CI](https://github.com/pranith7/Cricinfo/actions/workflows/ci.yml/badge.svg)](https://github.com/pranith7/Cricinfo/actions/workflows/ci.yml)
+[![Security](https://github.com/pranith7/Cricinfo/actions/workflows/security.yml/badge.svg)](https://github.com/pranith7/Cricinfo/actions/workflows/security.yml)
+
 ```bash
 pip install cricinfo
 ```
@@ -127,9 +130,13 @@ except CricbuzzError as exc:
 ## Development
 
 ```bash
-python -m unittest discover -s tests
-python -m compileall cricinfo tests
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m mypy cricinfo
+python -m pytest
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor workflow and [docs/api.md](docs/api.md) for API details.
 
 ## Notes
 

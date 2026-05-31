@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible Cricinfo bug.
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include code, match id, and command output.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Cricinfo version
+      placeholder: "1.3.0"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, OS, and dependency versions.
+    validations:
+      required: true
